@@ -1,8 +1,20 @@
 require("dotenv").config();
 const fs = require("fs");
 const path = require("path");
+const express = require("express"); // for UptimeRobot ping
 const { Client, GatewayIntentBits, Events, PermissionsBitField } = require("discord.js");
 
+// -----------------------------
+// Lightweight web server for ping
+// -----------------------------
+const app = express();
+app.get("/", (req, res) => res.send("ok"));
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Ping endpoint running on port ${PORT}`));
+
+// -----------------------------
+// Discord client setup
+// -----------------------------
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -24,6 +36,7 @@ if (fs.existsSync(COUNTER_PATH)) {
     console.warn("Could not read counter.json, using default:", err.message);
   }
 }
+
 function saveCounter() {
   try {
     fs.writeFileSync(COUNTER_PATH, JSON.stringify({ lastTicket: ticketCounter }, null, 2));
@@ -32,15 +45,19 @@ function saveCounter() {
   }
 }
 
-// STAFF ROLE ID – only users with this role can trigger ticket renaming
+// -----------------------------
+// Configuration
+// -----------------------------
 const STAFF_ROLE_ID = "1421545043214340166";
 
-// Category IDs (from you)
-const GUILD_APP_CATEGORY = "1398363565571969085";      // Link → assisted
-const MASTER_TICKET_CATEGORY = "1399235813379670028";  // Link → assisted
-const APPLICATION_TICKET_CATEGORY = "1403050594670743582"; // Done → assisted
-const MASTER_APPLICATION_CATEGORY = "1407414268965552270"; // Done → assisted
+const GUILD_APP_CATEGORY = "1398363565571969085";      
+const MASTER_TICKET_CATEGORY = "1399235813379670028";  
+const APPLICATION_TICKET_CATEGORY = "1403050594670743582"; 
+const MASTER_APPLICATION_CATEGORY = "1407414268965552270"; 
 
+// -----------------------------
+// Discord events
+// -----------------------------
 client.once(Events.ClientReady, () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
 });
@@ -71,10 +88,9 @@ client.on(Events.ChannelCreate, async (channel) => {
 // Message handling: link-only in certain categories, "done" in others
 client.on(Events.MessageCreate, async (message) => {
   try {
-    if (!message.guild) return;                 // ignore DMs
-    if (message.author.bot) return;             // ignore bots
+    if (!message.guild) return;
+    if (message.author.bot) return;
 
-    // safe member fetch
     let member;
     try {
       member = message.member ?? await message.guild.members.fetch(message.author.id);
@@ -82,7 +98,7 @@ client.on(Events.MessageCreate, async (message) => {
       return;
     }
     if (!member) return;
-    if (!member.roles.cache.has(STAFF_ROLE_ID)) return; // only staff
+    if (!member.roles.cache.has(STAFF_ROLE_ID)) return;
 
     const channel = message.channel;
     if (!channel || typeof channel.name !== "string") return;
@@ -90,27 +106,16 @@ client.on(Events.MessageCreate, async (message) => {
     const channelName = channel.name;
     const parentId = channel.parentId ?? null;
 
-    // if this channel is already assisted, do nothing for this channel
-    if (channelName.startsWith("assisted-ticket-")) {
-      // intentionally silent
-      return;
-    }
+    if (channelName.startsWith("assisted-ticket-")) return;
 
-    // normalize content safely
     const rawContent = (message.content || "").trim();
     const contentLower = rawContent.toLowerCase();
 
-    // 1) Guild App + Master Ticket categories => Roblox link triggers assisted
+    // 1) Guild App + Master Ticket categories → Roblox link triggers assisted
     if ([GUILD_APP_CATEGORY, MASTER_TICKET_CATEGORY].includes(parentId)) {
-      // check for link (case-insensitive by lowering)
       if (contentLower.includes("https://www.roblox.com/games")) {
-        // permission check
-        if (!message.guild.members.me.permissionsIn(channel).has(PermissionsBitField.Flags.ManageChannels)) {
-          console.warn("Missing ManageChannels permission to rename channel:", channel.id);
-          return;
-        }
+        if (!message.guild.members.me.permissionsIn(channel).has(PermissionsBitField.Flags.ManageChannels)) return;
 
-        // build assisted name by keeping suffix after 'ticket-'
         const newName = channelName.replace(/^.*ticket-/, "assisted-ticket-");
         try {
           await channel.setName(newName);
@@ -118,17 +123,14 @@ client.on(Events.MessageCreate, async (message) => {
         } catch (err) {
           console.error("Failed to rename channel to assisted (link):", err);
         }
-        return; // done for this message
+        return;
       }
     }
 
-    // 2) Application Ticket + Master Application categories => "done" triggers assisted
+    // 2) Application Ticket + Master Application categories → "done" triggers assisted
     if ([APPLICATION_TICKET_CATEGORY, MASTER_APPLICATION_CATEGORY].includes(parentId)) {
       if (contentLower === "done") {
-        if (!message.guild.members.me.permissionsIn(channel).has(PermissionsBitField.Flags.ManageChannels)) {
-          console.warn("Missing ManageChannels permission to rename channel:", channel.id);
-          return;
-        }
+        if (!message.guild.members.me.permissionsIn(channel).has(PermissionsBitField.Flags.ManageChannels)) return;
 
         const newName = channelName.replace(/^.*ticket-/, "assisted-ticket-");
         try {
@@ -140,14 +142,14 @@ client.on(Events.MessageCreate, async (message) => {
         return;
       }
     }
-
-    // otherwise ignore
   } catch (err) {
     console.error("MessageCreate handler error:", err);
   }
 });
 
-// startup info & login
+// -----------------------------
+// Startup
+// -----------------------------
 console.log("Token loaded:", process.env.TOKEN ? "✅ Yes" : "❌ No");
 
 process.on("unhandledRejection", (reason, p) => {
