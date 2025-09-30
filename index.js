@@ -1,7 +1,7 @@
 require("dotenv").config();
 const fs = require("fs");
 const path = require("path");
-const express = require("express"); // For UptimeRobot ping
+const express = require("express"); // for UptimeRobot ping
 const { Client, GatewayIntentBits, Events, PermissionsBitField } = require("discord.js");
 
 // -----------------------------
@@ -9,8 +9,6 @@ const { Client, GatewayIntentBits, Events, PermissionsBitField } = require("disc
 // -----------------------------
 const app = express();
 app.get("/", (req, res) => res.send("ok"));
-
-// On Render, you must listen on process.env.PORT
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Ping endpoint running on port ${PORT}`));
 
@@ -25,12 +23,9 @@ const client = new Client({
   ],
 });
 
-// -----------------------------
-// Counter file setup
-// -----------------------------
 const COUNTER_PATH = path.join(__dirname, "counter.json");
 
-// Safe load counter
+// safe load counter
 let ticketCounter = 3480;
 if (fs.existsSync(COUNTER_PATH)) {
   try {
@@ -44,10 +39,7 @@ if (fs.existsSync(COUNTER_PATH)) {
 
 function saveCounter() {
   try {
-    fs.writeFileSync(
-      COUNTER_PATH,
-      JSON.stringify({ lastTicket: ticketCounter }, null, 2)
-    );
+    fs.writeFileSync(COUNTER_PATH, JSON.stringify({ lastTicket: ticketCounter }, null, 2));
   } catch (err) {
     console.error("Failed to save counter.json:", err.message);
   }
@@ -58,10 +50,10 @@ function saveCounter() {
 // -----------------------------
 const STAFF_ROLE_ID = "1421545043214340166";
 
-const GUILD_APP_CATEGORY = "1398363565571969085";
-const MASTER_TICKET_CATEGORY = "1399235813379670028";
-const APPLICATION_TICKET_CATEGORY = "1403050594670743582";
-const MASTER_APPLICATION_CATEGORY = "1407414268965552270";
+const GUILD_APP_CATEGORY = "1398363565571969085";      
+const MASTER_TICKET_CATEGORY = "1399235813379670028";  
+const APPLICATION_TICKET_CATEGORY = "1403050594670743582"; 
+const MASTER_APPLICATION_CATEGORY = "1407414268965552270"; 
 
 // -----------------------------
 // Discord events
@@ -70,7 +62,7 @@ client.once(Events.ClientReady, () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
 });
 
-// ChannelCreate: rename ticket-* → waiting-ticket-<n>
+// ChannelCreate: rename ticket-* -> waiting-ticket-<n>
 client.on(Events.ChannelCreate, async (channel) => {
   try {
     if (!channel?.guild) return;
@@ -93,7 +85,7 @@ client.on(Events.ChannelCreate, async (channel) => {
   }
 });
 
-// Message handling
+// Message handling: link-only in certain categories, "done" in others
 client.on(Events.MessageCreate, async (message) => {
   try {
     if (!message.guild) return;
@@ -101,7 +93,7 @@ client.on(Events.MessageCreate, async (message) => {
 
     let member;
     try {
-      member = message.member ?? (await message.guild.members.fetch(message.author.id));
+      member = message.member ?? await message.guild.members.fetch(message.author.id);
     } catch {
       return;
     }
@@ -122,8 +114,7 @@ client.on(Events.MessageCreate, async (message) => {
     // 1) Guild App + Master Ticket categories → Roblox link triggers assisted
     if ([GUILD_APP_CATEGORY, MASTER_TICKET_CATEGORY].includes(parentId)) {
       if (contentLower.includes("https://www.roblox.com/games")) {
-        if (!message.guild.members.me.permissionsIn(channel).has(PermissionsBitField.Flags.ManageChannels))
-          return;
+        if (!message.guild.members.me.permissionsIn(channel).has(PermissionsBitField.Flags.ManageChannels)) return;
 
         const newName = channelName.replace(/^.*ticket-/, "assisted-ticket-");
         try {
@@ -139,8 +130,7 @@ client.on(Events.MessageCreate, async (message) => {
     // 2) Application Ticket + Master Application categories → "done" triggers assisted
     if ([APPLICATION_TICKET_CATEGORY, MASTER_APPLICATION_CATEGORY].includes(parentId)) {
       if (contentLower === "done") {
-        if (!message.guild.members.me.permissionsIn(channel).has(PermissionsBitField.Flags.ManageChannels))
-          return;
+        if (!message.guild.members.me.permissionsIn(channel).has(PermissionsBitField.Flags.ManageChannels)) return;
 
         const newName = channelName.replace(/^.*ticket-/, "assisted-ticket-");
         try {
@@ -165,11 +155,5 @@ console.log("Token loaded:", process.env.TOKEN ? "✅ Yes" : "❌ No");
 process.on("unhandledRejection", (reason, p) => {
   console.error("Unhandled Rejection at: Promise", p, "reason:", reason);
 });
-
-// Use TOKEN environment variable from Render
-if (!process.env.TOKEN) {
-  console.error("❌ Discord bot token is missing. Set TOKEN in Render's environment variables.");
-  process.exit(1);
-}
 
 client.login(process.env.TOKEN);
