@@ -55,6 +55,10 @@ const STAFF_ROLE_ID = "1421545043214340166";
 const ARCHIVE_CATEGORY_ID = "1426986618618646688";
 
 // -----------------------------
+// Store staff button messages
+const staffButtonMessages = new Map(); // key = channel.id, value = message
+
+// -----------------------------
 // Safe DM
 async function safeDM(user, message) {
   try {
@@ -101,10 +105,11 @@ client.on(Events.ChannelCreate, async (channel) => {
 
     setTimeout(async () => {
       if (!channel.permissionsFor(channel.guild.members.me).has(PermissionFlagsBits.SendMessages)) return;
-      await channel.send({
+      const msg = await channel.send({
         content: `🎟️ **Staff Controls** — Only staff can interact with these buttons.`,
         components: [createStaffButtons()],
       });
+      staffButtonMessages.set(channel.id, msg); // save message
     }, 2000);
   } catch (err) {
     console.error("ChannelCreate error:", err);
@@ -137,15 +142,19 @@ client.on(Events.InteractionCreate, async (interaction) => {
       });
     }
 
+    // Delete previous buttons message
+    const oldMsg = staffButtonMessages.get(channel.id);
+    if (oldMsg) {
+      await oldMsg.delete().catch(() => null);
+      staffButtonMessages.delete(channel.id);
+    }
+
     const match = channel.name.match(/\d+$/);
     const ticketNumber = match ? match[0] : ticketCounter;
 
     await channel.setName(`✅-claimed-ticket-${ticketNumber}`);
     await channel.setTopic(user.id);
     claimerId = user.id;
-
-    const lastMsg = (await channel.messages.fetch({ limit: 5 })).find((m) => m.components.length > 0);
-    if (lastMsg) await lastMsg.delete().catch(() => null);
 
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
@@ -179,6 +188,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
       });
     }
 
+    // Delete previous buttons message
+    const oldMsg = staffButtonMessages.get(channel.id);
+    if (oldMsg) {
+      await oldMsg.delete().catch(() => null);
+      staffButtonMessages.delete(channel.id);
+    }
+
     await channel.setTopic(null);
     claimerId = null;
 
@@ -186,13 +202,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
     const ticketNumber = match ? match[0] : ticketCounter - 1;
     await channel.setName(`❌-unclaimed-ticket-${ticketNumber}`);
 
-    const lastMsg = (await channel.messages.fetch({ limit: 5 })).find((m) => m.components.length > 0);
-    if (lastMsg) await lastMsg.delete().catch(() => null);
-
-    await channel.send({
+    const msg = await channel.send({
       content: `🆘 <@${user.id}> requested help. Ticket is now unclaimed. First <@&${STAFF_ROLE_ID}> to click Claim will take it.`,
       components: [createStaffButtons()],
     });
+    staffButtonMessages.set(channel.id, msg); // save new buttons
   }
 
   // -----------------------------
@@ -205,6 +219,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
         content: `❌ Only the staff who claimed this ticket (<@${claimerId}>) can close it.`,
         ephemeral: true,
       });
+    }
+
+    // Delete previous buttons message
+    const oldMsg = staffButtonMessages.get(channel.id);
+    if (oldMsg) {
+      await oldMsg.delete().catch(() => null);
+      staffButtonMessages.delete(channel.id);
     }
 
     await channel.send("🔒 Ticket closed and moved to archive.");
