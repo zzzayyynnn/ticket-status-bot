@@ -130,7 +130,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
   if (customId === "claim_ticket") {
     await interaction.deferUpdate();
 
-    if (claimerId && claimerId !== user.id) {
+    // First-click wins
+    if (claimerId) {
       return interaction.followUp({
         content: `❌ This ticket is already claimed by <@${claimerId}>.`,
         ephemeral: true,
@@ -144,9 +145,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     await channel.setTopic(user.id);
     claimerId = user.id;
 
-    const lastMsg = (await channel.messages.fetch({ limit: 5 })).find((m) => m.components.length > 0);
-    if (lastMsg) await lastMsg.delete().catch(() => null);
-
+    // Immediately send claim message with buttons
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId("close_ticket")
@@ -163,6 +162,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       components: [row],
     });
 
+    // Optional DM
     const ticketUser = claimerId ? await guild.members.fetch(claimerId).catch(() => null) : null;
     if (ticketUser) await safeDM(ticketUser.user, `💬 Your ticket has been claimed by <@${user.id}>.`);
   }
@@ -179,17 +179,16 @@ client.on(Events.InteractionCreate, async (interaction) => {
       });
     }
 
+    // Clear claimer
     await channel.setTopic(null);
     claimerId = null;
 
+    // Rename channel back to unclaimed
     const match = channel.name.match(/\d+$/);
     const ticketNumber = match ? match[0] : ticketCounter - 1;
     await channel.setName(`❌-unclaimed-ticket-${ticketNumber}`);
 
-    const lastMsg = (await channel.messages.fetch({ limit: 5 })).find((m) => m.components.length > 0);
-    if (lastMsg) await lastMsg.delete().catch(() => null);
-
-    // Updated: buttons after request help are now Claim + Close
+    // Immediately send message with Claim + Close buttons
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId("claim_ticket")
