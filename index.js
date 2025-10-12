@@ -1,11 +1,20 @@
 require("dotenv").config();
 const fs = require("fs");
 const path = require("path");
-const express = require("express"); // for UptimeRobot ping
-const { Client, GatewayIntentBits, Events, PermissionsBitField } = require("discord.js");
+const express = require("express");
+const {
+  Client,
+  GatewayIntentBits,
+  Events,
+  PermissionsBitField,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  EmbedBuilder,
+} = require("discord.js");
 
 // -----------------------------
-// Lightweight web server for ping
+// Lightweight web server for ping (for uptime monitors)
 // -----------------------------
 const app = express();
 app.get("/", (req, res) => res.send("ok"));
@@ -16,16 +25,12 @@ app.listen(PORT, () => console.log(`Ping endpoint running on port ${PORT}`));
 // Discord client setup
 // -----------------------------
 const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
-  ],
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent],
 });
 
 const COUNTER_PATH = path.join(__dirname, "counter.json");
 
-// safe load counter
+// Safe load counter
 let ticketCounter = 3480;
 if (fs.existsSync(COUNTER_PATH)) {
   try {
@@ -48,12 +53,19 @@ function saveCounter() {
 // -----------------------------
 // Configuration
 // -----------------------------
-const STAFF_ROLE_ID = "1421545043214340166";
+const STAFF_ROLE_ID = "1421545043214340166"; // staff role ID
+const ARCHIVE_CATEGORY_ID = "1426986618618646688"; // archive category
 
-const GUILD_APP_CATEGORY = "1398363565571969085";      
-const MASTER_TICKET_CATEGORY = "1399235813379670028";  
-const APPLICATION_TICKET_CATEGORY = "1403050594670743582"; 
-const MASTER_APPLICATION_CATEGORY = "1407414268965552270"; 
+// -----------------------------
+// Helper: Send DM safely
+// -----------------------------
+async function safeDM(user, message) {
+  try {
+    await user.send(message);
+  } catch {
+    console.log(`Could not DM ${user.tag}`);
+  }
+}
 
 // -----------------------------
 // Discord events
@@ -62,88 +74,124 @@ client.once(Events.ClientReady, () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
 });
 
-// ChannelCreate: rename ticket-* -> waiting-ticket-<n>
+// -----------------------------
+// Handle ticket creation
+// -----------------------------
 client.on(Events.ChannelCreate, async (channel) => {
   try {
-    if (!channel?.guild) return;
-    if (typeof channel.name !== "string") return;
-    if (!channel.name.startsWith("ticket-")) return;
+    if (!channel?.guild || !channel.name.startsWith("ticket-")) return;
 
     const botMember = channel.guild.members.me;
-    if (!botMember.permissionsIn(channel).has(PermissionsBitField.Flags.ManageChannels)) {
-      console.warn("Missing ManageChannels permission to rename new ticket:", channel.id);
-      return;
-    }
+    if (!botMember.permissionsIn(channel).has(PermissionsBitField.Flags.SendMessages)) return;
 
-    const newName = `waiting-ticket-${ticketCounter}`;
+    const newName = `❌-unclaimed-ticket-${ticketCounter}`;
     await channel.setName(newName);
-    console.log(`🆕 Ticket created → renamed to ${newName}`);
     ticketCounter++;
     saveCounter();
+
+    // Buttons: Claim + Request Help
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId("claim_ticket").setLabel("✅ Claim Ticket").setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId("request_help").setLabel("🆘 Request Help").setStyle(ButtonStyle.Danger)
+    );
+
+    const embed = new EmbedBuilder()
+      .setTitle("🎟️ New Ticket Created")
+      .setDescription("Please wait for a staff member to claim and assist you.")
+      .setColor("Yellow");
+
+    await channel.send({ embeds: [embed], components: [row] });
   } catch (err) {
-    console.error("ChannelCreate handler error:", err);
+    console.error("ChannelCreate error:", err);
   }
 });
 
-// Message handling: link-only in certain categories, "done" in others
-client.on(Events.MessageCreate, async (message) => {
-  try {
-    if (!message.guild) return;
-    if (message.author.bot) return;
+// -----------------------------
+// Handle button interactions
+// -----------------------------
+client.on(Events.InteractionCreate, async (interaction) => {
+  if (!interaction.isButton()) return;
+  const { customId, user, channel, guild } = interaction;
 
-    let member;
+  const member = await guild.members.fetch(user.id);
+  if (!member.roles.cache.has(STAFF_ROLE_ID)) {
+    return interaction.reply({ content: "❌ Only staff can use these buttons.", ephemeral: true });
+  }
+
+  if (customId === "claim_ticket") {
     try {
-      member = message.member ?? await message.guild.members.fetch(message.author.id);
-    } catch {
-      return;
-    }
-    if (!member) return;
-    if (!member.roles.cache.has(STAFF_ROLE_ID)) return;
+      const newName = channel.name.replace(/^.*ticket-/, "✅-claimed-ticket-");
+      await channel.setName(newName);
 
-    const channel = message.channel;
-    if (!channel || typeof channel.name !== "string") return;
+      await interaction.update({ components: [] });
+      await channel.send(`✅ Ticket claimed by Master <@${user.id}>`);
 
-    const channelName = channel.name;
-    const parentId = channel.parentId ?? null;
-
-    if (channelName.startsWith("assisted-ticket-")) return;
-
-    const rawContent = (message.content || "").trim();
-    const contentLower = rawContent.toLowerCase();
-
-    // 1) Guild App + Master Ticket categories → Roblox link triggers assisted
-    if ([GUILD_APP_CATEGORY, MASTER_TICKET_CATEGORY].includes(parentId)) {
-      if (contentLower.includes("https://www.roblox.com/games")) {
-        if (!message.guild.members.me.permissionsIn(channel).has(PermissionsBitField.Flags.ManageChannels)) return;
-
-        const newName = channelName.replace(/^.*ticket-/, "assisted-ticket-");
-        try {
-          await channel.setName(newName);
-          console.log(`🔗 Link detected in category ${parentId} → renamed to ${newName}`);
-        } catch (err) {
-          console.error("Failed to rename channel to assisted (link):", err);
-        }
-        return;
+      // Send DM to user (if possible)
+      const ticketUser = channel.topic ? await guild.members.fetch(channel.topic).catch(() => null) : null;
+      if (ticketUser) {
+        await safeDM(
+          ticketUser.user,
+          `💬 Your ticket has been claimed by <@${user.id}>. They will assist you soon.`
+        );
       }
+
+      // Add Close + Request Help buttons
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId("close_ticket").setLabel("❌ Close Ticket").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId("request_help").setLabel("🆘 Request Help").setStyle(ButtonStyle.Danger)
+      );
+
+      await channel.send({ components: [row] });
+    } catch (err) {
+      console.error("Claim ticket error:", err);
     }
+  }
 
-    // 2) Application Ticket + Master Application categories → "done" triggers assisted
-    if ([APPLICATION_TICKET_CATEGORY, MASTER_APPLICATION_CATEGORY].includes(parentId)) {
-      if (contentLower === "done") {
-        if (!message.guild.members.me.permissionsIn(channel).has(PermissionsBitField.Flags.ManageChannels)) return;
+  if (customId === "request_help") {
+    try {
+      const newName = channel.name.replace(/^.*ticket-/, "❌-unclaimed-ticket-");
+      await channel.setName(newName);
 
-        const newName = channelName.replace(/^.*ticket-/, "assisted-ticket-");
-        try {
-          await channel.setName(newName);
-          console.log(`✅ "done" detected in category ${parentId} → renamed to ${newName}`);
-        } catch (err) {
-          console.error("Failed to rename channel to assisted (done):", err);
-        }
-        return;
+      await channel.send(`🆘 <@${user.id}> is requesting help. Ticket reopened for other <@&${STAFF_ROLE_ID}>.`);
+      await interaction.update({ components: [] });
+
+      // Optionally DM the ticket user
+      const ticketUser = channel.topic ? await guild.members.fetch(channel.topic).catch(() => null) : null;
+      if (ticketUser) {
+        await safeDM(
+          ticketUser.user,
+          `💬 The staff member handling your ticket has requested help. Another staff will assist you shortly.`
+        );
       }
+
+      // Re-add buttons for next staff
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId("claim_ticket").setLabel("✅ Claim Ticket").setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId("request_help").setLabel("🆘 Request Help").setStyle(ButtonStyle.Danger)
+      );
+
+      await channel.send({ components: [row] });
+    } catch (err) {
+      console.error("Request help error:", err);
     }
-  } catch (err) {
-    console.error("MessageCreate handler error:", err);
+  }
+
+  if (customId === "close_ticket") {
+    try {
+      await channel.send("🔒 Ticket closed and moved to archive.");
+      await interaction.update({ components: [] });
+
+      // Move to archive category
+      await channel.setParent(ARCHIVE_CATEGORY_ID);
+
+      // DM the user about closure
+      const ticketUser = channel.topic ? await guild.members.fetch(channel.topic).catch(() => null) : null;
+      if (ticketUser) {
+        await safeDM(ticketUser.user, "💬 Your ticket has been closed. Thank you for your patience!");
+      }
+    } catch (err) {
+      console.error("Close ticket error:", err);
+    }
   }
 });
 
@@ -153,7 +201,7 @@ client.on(Events.MessageCreate, async (message) => {
 console.log("Token loaded:", process.env.TOKEN ? "✅ Yes" : "❌ No");
 
 process.on("unhandledRejection", (reason, p) => {
-  console.error("Unhandled Rejection at: Promise", p, "reason:", reason);
+  console.error("Unhandled Rejection at:", p, "reason:", reason);
 });
 
 client.login(process.env.TOKEN);
