@@ -13,7 +13,7 @@ const {
 } = require("discord.js");
 
 // -----------------------------
-// Express server (uptime ping)
+// Express server
 const app = express();
 app.get("/", (req, res) => res.send("ok"));
 const PORT = process.env.PORT || 3000;
@@ -91,25 +91,20 @@ client.on(Events.ChannelCreate, async (channel) => {
   try {
     if (!channel?.guild || !channel.name.startsWith("ticket-")) return;
 
-    // Extract ticket number or use counter
     const match = channel.name.match(/\d+$/);
     const ticketNumber = match ? match[0] : ticketCounter;
 
-    const newName = `❌-unclaimed-ticket-${ticketNumber}`;
-    await channel.setName(newName);
+    await channel.setName(`❌-unclaimed-ticket-${ticketNumber}`);
     await channel.setTopic(null); // no claimer yet
     ticketCounter++;
     saveCounter();
 
-    // Send staff buttons
     setTimeout(async () => {
       if (!channel.permissionsFor(channel.guild.members.me).has(PermissionFlagsBits.SendMessages)) return;
-
       await channel.send({
         content: `🎟️ **Staff Controls** — Only staff can interact with these buttons.`,
         components: [createStaffButtons()],
       });
-      console.log(`🎫 Staff buttons added in ${channel.name}`);
     }, 2000);
   } catch (err) {
     console.error("ChannelCreate error:", err);
@@ -142,20 +137,16 @@ client.on(Events.InteractionCreate, async (interaction) => {
       });
     }
 
-    // Get ticket number from name
     const match = channel.name.match(/\d+$/);
     const ticketNumber = match ? match[0] : ticketCounter;
 
-    const newName = `✅-claimed-ticket-${ticketNumber}`;
-    await channel.setName(newName);
+    await channel.setName(`✅-claimed-ticket-${ticketNumber}`);
     await channel.setTopic(user.id);
     claimerId = user.id;
 
-    // Remove old button message
     const lastMsg = (await channel.messages.fetch({ limit: 5 })).find((m) => m.components.length > 0);
     if (lastMsg) await lastMsg.delete().catch(() => null);
 
-    // Send new buttons: Close + Request Help
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId("close_ticket")
@@ -172,7 +163,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
       components: [row],
     });
 
-    // DM ticket owner
     const ticketUser = claimerId ? await guild.members.fetch(claimerId).catch(() => null) : null;
     if (ticketUser) await safeDM(ticketUser.user, `💬 Your ticket has been claimed by <@${user.id}>.`);
   }
@@ -189,24 +179,31 @@ client.on(Events.InteractionCreate, async (interaction) => {
       });
     }
 
-    // Reset ticket to unclaimed
     await channel.setTopic(null);
     claimerId = null;
 
-    // Extract ticket number
     const match = channel.name.match(/\d+$/);
     const ticketNumber = match ? match[0] : ticketCounter - 1;
-    const newName = `❌-unclaimed-ticket-${ticketNumber}`;
-    await channel.setName(newName);
+    await channel.setName(`❌-unclaimed-ticket-${ticketNumber}`);
 
-    // Remove old button message
     const lastMsg = (await channel.messages.fetch({ limit: 5 })).find((m) => m.components.length > 0);
     if (lastMsg) await lastMsg.delete().catch(() => null);
 
-    // Send new staff buttons
+    // Updated: buttons after request help are now Claim + Close
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId("claim_ticket")
+        .setLabel("✅ Claim Ticket")
+        .setStyle(ButtonStyle.Success),
+      new ButtonBuilder()
+        .setCustomId("close_ticket")
+        .setLabel("❌ Close Ticket")
+        .setStyle(ButtonStyle.Secondary)
+    );
+
     await channel.send({
-      content: `🆘 <@${user.id}> requested help. Ticket is now unclaimed. First staff to click Claim will take it.`,
-      components: [createStaffButtons()],
+      content: `🆘 <@${user.id}> requested help. Ticket is now unclaimed. First <@&${STAFF_ROLE_ID}> to click Claim will take it.`,
+      components: [row],
     });
   }
 
@@ -223,26 +220,15 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
 
     await channel.send("🔒 Ticket closed and moved to archive.");
-
-    // Move to archive
     await channel.setParent(ARCHIVE_CATEGORY_ID);
 
-    // Restrict permissions: only staff can view
     await channel.permissionOverwrites.set([
-      {
-        id: channel.guild.roles.everyone.id,
-        deny: ['ViewChannel'],
-      },
-      {
-        id: STAFF_ROLE_ID,
-        allow: ['ViewChannel', 'SendMessages', 'ManageChannels'],
-      },
+      { id: channel.guild.roles.everyone.id, deny: ['ViewChannel'] },
+      { id: STAFF_ROLE_ID, allow: ['ViewChannel', 'SendMessages', 'ManageChannels'] },
     ]);
 
-    // DM ticket owner
     const ticketUser = claimerId ? await guild.members.fetch(claimerId).catch(() => null) : null;
-    if (ticketUser)
-      await safeDM(ticketUser.user, "💬 Your ticket has been closed. Thank you for your patience!");
+    if (ticketUser) await safeDM(ticketUser.user, "💬 Your ticket has been closed. Thank you for your patience!");
   }
 });
 
