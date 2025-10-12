@@ -1,204 +1,216 @@
 require("dotenv").config();
 const fs = require("fs");
-const path = require("path");
 const express = require("express");
-const {
-  Client,
-  GatewayIntentBits,
-  Events,
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
-  PermissionFlagsBits,
+const { 
+    Client, 
+    GatewayIntentBits, 
+    Partials, 
+    ActionRowBuilder, 
+    ButtonBuilder, 
+    ButtonStyle, 
+    PermissionsBitField 
 } = require("discord.js");
 
-// -----------------------------
-// Express server
-const app = express();
-app.get("/", (req, res) => res.send("ok"));
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Ping endpoint running on port ${PORT}`));
-
-// -----------------------------
-// Discord client
 const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
-  ],
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent
+    ],
+    partials: [Partials.Channel]
 });
 
-// -----------------------------
-// Ticket counter
-const COUNTER_PATH = path.join(__dirname, "counter.json");
-let ticketCounter = 4176;
-if (fs.existsSync(COUNTER_PATH)) {
-  try {
-    const data = JSON.parse(fs.readFileSync(COUNTER_PATH, "utf8"));
-    ticketCounter = data.lastTicket || ticketCounter;
-  } catch (err) {
-    console.warn("⚠️ Could not read counter.json:", err.message);
-  }
+// -------------------- Config from .env --------------------
+const TICKET_CATEGORY_ID = process.env.MASTER_TICKET_CATEGORY; // New tickets
+const ARCHIVE_CATEGORY_ID = process.env.ARCHIVE_CATEGORY_ID; // Closed tickets
+const STAFF_ROLE_ID = process.env.STAFF_ROLE_ID; // Staff role
+const START_NUMBER = 4176;
+const COUNTER_FILE = "./counter.json";
+
+// -------------------- Counter --------------------
+let counter = START_NUMBER;
+if (fs.existsSync(COUNTER_FILE)) {
+    const data = JSON.parse(fs.readFileSync(COUNTER_FILE, "utf8"));
+    counter = data.counter || START_NUMBER;
 }
+
 function saveCounter() {
-  try {
-    fs.writeFileSync(COUNTER_PATH, JSON.stringify({ lastTicket: ticketCounter }, null, 2));
-  } catch (err) {
-    console.error("❌ Failed to save counter.json:", err.message);
-  }
+    fs.writeFileSync(COUNTER_FILE, JSON.stringify({ counter: counter }));
 }
 
-// -----------------------------
-// Config
-const STAFF_ROLE_ID = "1421545043214340166";
-const ARCHIVE_CATEGORY_ID = "1426986618618646688";
+// -------------------- Express Keepalive --------------------
+const app = express();
+app.get("/", (req, res) => res.send("Bot is alive!"));
+app.listen(process.env.PORT || 3000);
 
-// -----------------------------
-// Safe DM
-async function safeDM(user, message) {
-  try {
-    await user.send(message);
-  } catch {
-    console.log(`⚠️ Could not DM ${user.tag}`);
-  }
-}
-
-// -----------------------------
-// Ready
-client.once(Events.ClientReady, () => {
-  console.log(`✅ Logged in as ${client.user.tag}`);
+// -------------------- Ready --------------------
+client.once("ready", () => {
+    console.log(`${client.user.tag} is online!`);
 });
 
-// -----------------------------
-// Staff buttons (featured)
-function createStaffButtons() {
-  return new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId("claim_ticket")
-      .setLabel("✅ Claim Ticket")
-      .setStyle(ButtonStyle.Success),
-    new ButtonBuilder()
-      .setCustomId("request_help")
-      .setLabel("🆘 Request Help")
-      .setStyle(ButtonStyle.Danger),
-    new ButtonBuilder()
-      .setCustomId("close_ticket")
-      .setLabel("❌ Close Ticket")
-      .setStyle(ButtonStyle.Secondary)
-  );
-}
+// -------------------- Ticket Creation Command --------------------
+client.on("interactionCreate", async (interaction) => {
+    if (!interaction.isChatInputCommand()) return;
 
-// -----------------------------
-// New ticket
-client.on(Events.ChannelCreate, async (channel) => {
-  try {
-    if (!channel?.guild || !channel.name.startsWith("ticket-")) return;
+    if (interaction.commandName === "newticket") {
+        counter++;
+        saveCounter();
 
-    const match = channel.name.match(/\d+$/);
-    const ticketNumber = match ? match[0] : ticketCounter;
+        const ticketName = `❌-unclaimed-ticket-${counter}`;
+        const ticketChannel = await interaction.guild.channels.create({
+            name: ticketName,
+            type: 0,
+            parent: TICKET_CATEGORY_ID,
+            permissionOverwrites: [
+                {
+                    id: interaction.guild.id,
+                    deny: [PermissionsBitField.Flags.ViewChannel],
+                },
+                {
+                    id: interaction.user.id,
+                    allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages],
+                },
+                {
+                    id: STAFF_ROLE_ID,
+                    allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages],
+                },
+            ],
+        });
 
-    await channel.setName(`❌-unclaimed-ticket-${ticketNumber}`);
-    await channel.setTopic(null); // no claimer yet
-    ticketCounter++;
-    saveCounter();
+        const buttons = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId("claim_ticket")
+                .setLabel("✅ Claim Ticket")
+                .setStyle(ButtonStyle.Success),
+            new ButtonBuilder()
+                .setCustomId("request_help")
+                .setLabel("🆘 Request Help")
+                .setStyle(ButtonStyle.Primary)
+        );
 
-    setTimeout(async () => {
-      if (!channel.permissionsFor(channel.guild.members.me).has(PermissionFlagsBits.SendMessages)) return;
-      await channel.send({
-        content: `🎟️ **Staff Controls** — Only staff can interact with these buttons.`,
-        components: [createStaffButtons()],
-      });
-    }, 2000);
-  } catch (err) {
-    console.error("ChannelCreate error:", err);
-  }
+        await ticketChannel.send({
+            content: `Hello <@${interaction.user.id}>, a staff member will assist you shortly.`,
+            components: [buttons]
+        });
+
+        await interaction.reply({ content: `Your ticket has been created: ${ticketChannel}`, ephemeral: true });
+    }
 });
 
-// -----------------------------
-// Button interactions
-client.on(Events.InteractionCreate, async (interaction) => {
-  if (!interaction.isButton()) return;
-  const { customId, user, channel, guild } = interaction;
-  const member = await guild.members.fetch(user.id);
+// -------------------- Button Interactions --------------------
+client.on("interactionCreate", async (interaction) => {
+    if (!interaction.isButton()) return;
 
-  // Only staff can interact
-  if (!member.roles.cache.has(STAFF_ROLE_ID)) {
-    return interaction.reply({ content: "❌ Only staff can use this.", ephemeral: true });
-  }
+    const ticketChannel = interaction.channel;
+    const user = interaction.user;
 
-  let claimerId = channel.topic || null;
-
-  // -----------------------------
-  // CLAIM TICKET
-  if (customId === "claim_ticket") {
-    if (claimerId) {
-      return interaction.reply({
-        content: `❌ This ticket is already claimed by <@${claimerId}>.`,
-        ephemeral: true,
-      });
+    // -------------------- Staff-only check --------------------
+    if (!interaction.member.roles.cache.has(STAFF_ROLE_ID)) {
+        return interaction.reply({ content: "❌ Only staff can use these buttons.", ephemeral: true });
     }
 
-    const match = channel.name.match(/\d+$/);
-    const ticketNumber = match ? match[0] : ticketCounter;
+    // -------------------- Claim Ticket --------------------
+    if (interaction.customId === "claim_ticket") {
+        if (!ticketChannel.name.startsWith("❌-unclaimed-ticket")) {
+            return interaction.reply({ content: "❌ This ticket is already claimed by another staff!", ephemeral: true });
+        }
 
-    await channel.setName(`✅-claimed-ticket-${ticketNumber}`);
-    await channel.setTopic(user.id);
-    claimerId = user.id;
+        const newName = ticketChannel.name.replace("❌-unclaimed-ticket", "✅-claimed-ticket");
+        await ticketChannel.setName(newName);
 
-    await interaction.reply({
-      content: `✅ Ticket claimed by <@${user.id}>`,
-      components: [createStaffButtons()],
-    });
-  }
+        const buttons = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId("close_ticket")
+                .setLabel("❌ Close Ticket")
+                .setStyle(ButtonStyle.Danger),
+            new ButtonBuilder()
+                .setCustomId("request_help")
+                .setLabel("🆘 Request Help")
+                .setStyle(ButtonStyle.Primary)
+        );
 
-  // -----------------------------
-  // REQUEST HELP
-  if (customId === "request_help") {
-    if (claimerId && claimerId !== user.id) {
-      return interaction.reply({
-        content: `❌ Only the staff who claimed this ticket (<@${claimerId}>) can request help.`,
-        ephemeral: true,
-      });
+        await ticketChannel.send({
+            content: `✅ Ticket claimed by Master <@${user.id}>`,
+            components: [buttons]
+        });
+
+        // Notify ticket creator
+        try {
+            const ticketOwner = ticketChannel.permissionOverwrites.cache.find(po => po.allow.has(PermissionsBitField.Flags.ViewChannel) && po.id !== STAFF_ROLE_ID);
+            if (ticketOwner) {
+                const member = await interaction.guild.members.fetch(ticketOwner.id);
+                await member.send(`💬 Your ticket has been claimed by <@${user.id}>.`);
+            }
+        } catch {}
+
+        await interaction.deferUpdate();
     }
 
-    await channel.setTopic(null);
-    claimerId = null;
+    // -------------------- Request Help --------------------
+    if (interaction.customId === "request_help") {
+        if (!ticketChannel.name.startsWith("✅-claimed-ticket")) {
+            return interaction.reply({ content: "❌ This ticket is not currently claimed.", ephemeral: true });
+        }
 
-    const match = channel.name.match(/\d+$/);
-    const ticketNumber = match ? match[0] : ticketCounter - 1;
-    await channel.setName(`❌-unclaimed-ticket-${ticketNumber}`);
+        const newName = ticketChannel.name.replace("✅-claimed-ticket", "❌-unclaimed-ticket");
+        await ticketChannel.setName(newName);
 
-    await interaction.reply({
-      content: `🆘 <@${user.id}> requested help. Ticket is now unclaimed. First <@&${STAFF_ROLE_ID}> to click Claim will take it.`,
-      components: [createStaffButtons()],
-    });
-  }
+        const buttons = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId("claim_ticket")
+                .setLabel("✅ Claim Ticket")
+                .setStyle(ButtonStyle.Success),
+            new ButtonBuilder()
+                .setCustomId("close_ticket")
+                .setLabel("❌ Close Ticket")
+                .setStyle(ButtonStyle.Danger)
+        );
 
-  // -----------------------------
-  // CLOSE TICKET
-  if (customId === "close_ticket") {
-    if (claimerId && claimerId !== user.id) {
-      return interaction.reply({
-        content: `❌ Only the staff who claimed this ticket (<@${claimerId}>) can close it.`,
-        ephemeral: true,
-      });
+        await ticketChannel.send({
+            content: `🆘 <@${user.id}> is requesting help because I can't handle this ticket. Ticket reopened for other @staff.`,
+            components: [buttons]
+        });
+
+        try {
+            const ticketOwner = ticketChannel.permissionOverwrites.cache.find(po => po.allow.has(PermissionsBitField.Flags.ViewChannel) && po.id !== STAFF_ROLE_ID);
+            if (ticketOwner) {
+                const member = await interaction.guild.members.fetch(ticketOwner.id);
+                await member.send(`💬 The staff member <@${user.id}> has requested help. Another staff will assist you soon.`);
+            }
+        } catch {}
+
+        await interaction.deferUpdate();
     }
 
-    await channel.send("🔒 Ticket closed and moved to archive.");
-    await channel.setParent(ARCHIVE_CATEGORY_ID);
+    // -------------------- Close Ticket --------------------
+    if (interaction.customId === "close_ticket") {
+        const newName = `🔒-closed-${counter}`;
+        await ticketChannel.setParent(ARCHIVE_CATEGORY_ID);
+        await ticketChannel.setName(newName);
 
-    await channel.permissionOverwrites.set([
-      { id: channel.guild.roles.everyone.id, deny: ['ViewChannel'] },
-      { id: STAFF_ROLE_ID, allow: ['ViewChannel', 'SendMessages', 'ManageChannels'] },
-    ]);
+        await ticketChannel.send("🔒 Ticket closed and moved to archive.");
 
-    await interaction.reply({ content: "✅ Ticket successfully closed.", ephemeral: true });
-  }
+        try {
+            const ticketOwner = ticketChannel.permissionOverwrites.cache.find(po => po.allow.has(PermissionsBitField.Flags.ViewChannel) && po.id !== STAFF_ROLE_ID);
+            if (ticketOwner) {
+                const member = await interaction.guild.members.fetch(ticketOwner.id);
+                await member.send("💬 Your ticket has been closed. Thank you!");
+            }
+        } catch {}
+
+        await interaction.deferUpdate();
+    }
 });
 
-// -----------------------------
-// Startup
-console.log("Token loaded:", process.env.TOKEN ? "✅ Yes" : "❌ No");
-process.on("unhandledRejection", (reason) => console.error("Unhandled Rejection:", reason));
+// -------------------- Register Slash Commands --------------------
+client.on("ready", async () => {
+    const data = [
+        {
+            name: "newticket",
+            description: "Create a new support ticket",
+        },
+    ];
+    await client.application.commands.set(data);
+});
+
 client.login(process.env.TOKEN);
