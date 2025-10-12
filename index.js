@@ -139,21 +139,19 @@ client.on(Events.InteractionCreate, async (interaction) => {
       });
     }
 
-    // Delete previous buttons message if exists
-    const oldMsg = staffButtonMessages.get(channel.id);
-    if (oldMsg) {
-      await oldMsg.delete().catch(() => null);
-      staffButtonMessages.delete(channel.id);
-    }
-
+    // Update channel name and topic instantly
     const match = channel.name.match(/\d+$/);
     const ticketNumber = match ? match[0] : ticketCounter;
-
     await channel.setName(`✅-claimed-ticket-${ticketNumber}`);
     await channel.setTopic(user.id);
     claimerId = user.id;
 
-    // ALWAYS send a new message after claim
+    // Delete old message asynchronously
+    const oldMsg = staffButtonMessages.get(channel.id);
+    if (oldMsg) oldMsg.delete().catch(() => null);
+    staffButtonMessages.delete(channel.id);
+
+    // Immediately send new message
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId("close_ticket")
@@ -187,15 +185,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
       });
     }
 
-    // Delete previous buttons message
-    const oldMsg = staffButtonMessages.get(channel.id);
-    if (oldMsg) {
-      await oldMsg.delete().catch(() => null);
-      staffButtonMessages.delete(channel.id);
-    }
-
+    // Update channel topic
     await channel.setTopic(null);
     claimerId = null;
+
+    // Delete old message asynchronously
+    const oldMsg = staffButtonMessages.get(channel.id);
+    if (oldMsg) oldMsg.delete().catch(() => null);
+    staffButtonMessages.delete(channel.id);
 
     const match = channel.name.match(/\d+$/);
     const ticketNumber = match ? match[0] : ticketCounter - 1;
@@ -220,12 +217,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
       });
     }
 
-    // Delete previous buttons message
+    // Delete old message asynchronously
     const oldMsg = staffButtonMessages.get(channel.id);
-    if (oldMsg) {
-      await oldMsg.delete().catch(() => null);
-      staffButtonMessages.delete(channel.id);
-    }
+    if (oldMsg) oldMsg.delete().catch(() => null);
+    staffButtonMessages.delete(channel.id);
 
     await channel.send("🔒 Ticket closed and moved to archive.");
     await channel.setParent(ARCHIVE_CATEGORY_ID);
