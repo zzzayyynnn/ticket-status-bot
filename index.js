@@ -103,14 +103,11 @@ client.on(Events.ChannelCreate, async (channel) => {
     ticketCounter++;
     saveCounter();
 
-    setTimeout(async () => {
-      if (!channel.permissionsFor(channel.guild.members.me).has(PermissionFlagsBits.SendMessages)) return;
-      const msg = await channel.send({
-        content: `🎟️ **Staff Controls** — Only staff can interact with these buttons.`,
-        components: [createStaffButtons()],
-      });
-      staffButtonMessages.set(channel.id, msg); // save message
-    }, 2000);
+    const msg = await channel.send({
+      content: `🎟️ **Staff Controls** — Only staff can interact with these buttons.`,
+      components: [createStaffButtons()],
+    });
+    staffButtonMessages.set(channel.id, msg);
   } catch (err) {
     console.error("ChannelCreate error:", err);
   }
@@ -156,7 +153,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     await channel.setTopic(user.id);
     claimerId = user.id;
 
-    // Always send a new message after claim
+    // ALWAYS send a new message after claim
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId("close_ticket")
@@ -190,7 +187,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       });
     }
 
-    // Delete previous buttons message if exists
+    // Delete previous buttons message
     const oldMsg = staffButtonMessages.get(channel.id);
     if (oldMsg) {
       await oldMsg.delete().catch(() => null);
@@ -223,7 +220,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       });
     }
 
-    // Delete previous buttons message if exists
+    // Delete previous buttons message
     const oldMsg = staffButtonMessages.get(channel.id);
     if (oldMsg) {
       await oldMsg.delete().catch(() => null);
