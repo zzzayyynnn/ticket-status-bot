@@ -142,7 +142,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       });
     }
 
-    // Delete previous buttons message
+    // Delete previous buttons message if exists
     const oldMsg = staffButtonMessages.get(channel.id);
     if (oldMsg) {
       await oldMsg.delete().catch(() => null);
@@ -156,6 +156,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     await channel.setTopic(user.id);
     claimerId = user.id;
 
+    // Always send a new message after claim
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId("close_ticket")
@@ -167,10 +168,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
         .setStyle(ButtonStyle.Danger)
     );
 
-    await channel.send({
+    const newMsg = await channel.send({
       content: `✅ Ticket claimed by <@${user.id}>`,
       components: [row],
     });
+    staffButtonMessages.set(channel.id, newMsg);
 
     const ticketUser = claimerId ? await guild.members.fetch(claimerId).catch(() => null) : null;
     if (ticketUser) await safeDM(ticketUser.user, `💬 Your ticket has been claimed by <@${user.id}>.`);
@@ -188,7 +190,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       });
     }
 
-    // Delete previous buttons message
+    // Delete previous buttons message if exists
     const oldMsg = staffButtonMessages.get(channel.id);
     if (oldMsg) {
       await oldMsg.delete().catch(() => null);
@@ -206,7 +208,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       content: `🆘 <@${user.id}> requested help. Ticket is now unclaimed. First <@&${STAFF_ROLE_ID}> to click Claim will take it.`,
       components: [createStaffButtons()],
     });
-    staffButtonMessages.set(channel.id, msg); // save new buttons
+    staffButtonMessages.set(channel.id, msg);
   }
 
   // -----------------------------
@@ -221,7 +223,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       });
     }
 
-    // Delete previous buttons message
+    // Delete previous buttons message if exists
     const oldMsg = staffButtonMessages.get(channel.id);
     if (oldMsg) {
       await oldMsg.delete().catch(() => null);
