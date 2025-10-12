@@ -55,7 +55,7 @@ const STAFF_ROLE_ID = "1421545043214340166";
 const ARCHIVE_CATEGORY_ID = "1426986618618646688";
 
 // -----------------------------
-// Store staff button messages
+// Store single staff message per channel
 const staffButtonMessages = new Map(); // key = channel.id, value = message
 
 // -----------------------------
@@ -103,11 +103,13 @@ client.on(Events.ChannelCreate, async (channel) => {
     ticketCounter++;
     saveCounter();
 
+    // Send single message immediately
     const msg = await channel.send({
       content: `🎟️ **Staff Controls** — Only staff can interact with these buttons.`,
       components: [createStaffButtons()],
     });
     staffButtonMessages.set(channel.id, msg);
+
   } catch (err) {
     console.error("ChannelCreate error:", err);
   }
@@ -139,7 +141,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       });
     }
 
-    // Update channel name and topic instantly
+    // Update channel instantly
     const match = channel.name.match(/\d+$/);
     const ticketNumber = match ? match[0] : ticketCounter;
     await channel.setName(`✅-claimed-ticket-${ticketNumber}`);
@@ -151,7 +153,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     if (oldMsg) oldMsg.delete().catch(() => null);
     staffButtonMessages.delete(channel.id);
 
-    // Immediately send new message
+    // Immediately send new claimed message
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId("close_ticket")
@@ -169,6 +171,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     });
     staffButtonMessages.set(channel.id, newMsg);
 
+    // DM the ticket user if exists
     const ticketUser = claimerId ? await guild.members.fetch(claimerId).catch(() => null) : null;
     if (ticketUser) await safeDM(ticketUser.user, `💬 Your ticket has been claimed by <@${user.id}>.`);
   }
@@ -185,7 +188,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       });
     }
 
-    // Update channel topic
+    // Set channel topic to null instantly
     await channel.setTopic(null);
     claimerId = null;
 
@@ -194,10 +197,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
     if (oldMsg) oldMsg.delete().catch(() => null);
     staffButtonMessages.delete(channel.id);
 
+    // Rename channel to unclaimed
     const match = channel.name.match(/\d+$/);
     const ticketNumber = match ? match[0] : ticketCounter - 1;
     await channel.setName(`❌-unclaimed-ticket-${ticketNumber}`);
 
+    // Immediately send new unclaimed message
     const msg = await channel.send({
       content: `🆘 <@${user.id}> requested help. Ticket is now unclaimed. First <@&${STAFF_ROLE_ID}> to click Claim will take it.`,
       components: [createStaffButtons()],
