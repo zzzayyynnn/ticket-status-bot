@@ -71,7 +71,7 @@ client.once(Events.ClientReady, () => {
 });
 
 // -----------------------------
-// Staff buttons
+// Staff buttons (featured)
 function createStaffButtons() {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
@@ -81,7 +81,11 @@ function createStaffButtons() {
     new ButtonBuilder()
       .setCustomId("request_help")
       .setLabel("🆘 Request Help")
-      .setStyle(ButtonStyle.Danger)
+      .setStyle(ButtonStyle.Danger),
+    new ButtonBuilder()
+      .setCustomId("close_ticket")
+      .setLabel("❌ Close Ticket")
+      .setStyle(ButtonStyle.Secondary)
   );
 }
 
@@ -128,7 +132,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
   // -----------------------------
   // CLAIM TICKET
   if (customId === "claim_ticket") {
-    // First-click wins
     if (claimerId) {
       return interaction.reply({
         content: `❌ This ticket is already claimed by <@${claimerId}>.`,
@@ -143,26 +146,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
     await channel.setTopic(user.id);
     claimerId = user.id;
 
-    // Send message immediately
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId("close_ticket")
-        .setLabel("❌ Close Ticket")
-        .setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder()
-        .setCustomId("request_help")
-        .setLabel("🆘 Request Help")
-        .setStyle(ButtonStyle.Danger)
-    );
-
     await interaction.reply({
       content: `✅ Ticket claimed by <@${user.id}>`,
-      components: [row],
+      components: [createStaffButtons()],
     });
-
-    // Optional DM
-    const ticketUser = claimerId ? await guild.members.fetch(claimerId).catch(() => null) : null;
-    if (ticketUser) await safeDM(ticketUser.user, `💬 Your ticket has been claimed by <@${user.id}>.`);
   }
 
   // -----------------------------
@@ -175,30 +162,16 @@ client.on(Events.InteractionCreate, async (interaction) => {
       });
     }
 
-    // Clear claimer
     await channel.setTopic(null);
     claimerId = null;
 
-    // Rename channel back to unclaimed
     const match = channel.name.match(/\d+$/);
     const ticketNumber = match ? match[0] : ticketCounter - 1;
     await channel.setName(`❌-unclaimed-ticket-${ticketNumber}`);
 
-    // Immediately send message with Claim + Close buttons
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId("claim_ticket")
-        .setLabel("✅ Claim Ticket")
-        .setStyle(ButtonStyle.Success),
-      new ButtonBuilder()
-        .setCustomId("close_ticket")
-        .setLabel("❌ Close Ticket")
-        .setStyle(ButtonStyle.Secondary)
-    );
-
     await interaction.reply({
       content: `🆘 <@${user.id}> requested help. Ticket is now unclaimed. First <@&${STAFF_ROLE_ID}> to click Claim will take it.`,
-      components: [row],
+      components: [createStaffButtons()],
     });
   }
 
@@ -220,8 +193,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       { id: STAFF_ROLE_ID, allow: ['ViewChannel', 'SendMessages', 'ManageChannels'] },
     ]);
 
-    const ticketUser = claimerId ? await guild.members.fetch(claimerId).catch(() => null) : null;
-    if (ticketUser) await safeDM(ticketUser.user, "💬 Your ticket has been closed. Thank you for your patience!");
+    await interaction.reply({ content: "✅ Ticket successfully closed.", ephemeral: true });
   }
 });
 
