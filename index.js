@@ -65,7 +65,7 @@ client.once(Events.ClientReady, () => {
 });
 
 // -----------------------------
-// Button for closing ticket
+// Close button
 function createCloseButton() {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
@@ -76,13 +76,13 @@ function createCloseButton() {
 }
 
 // -----------------------------
-// Auto-claim on link or "done"
+// Auto-claim on message
 client.on(Events.MessageCreate, async (message) => {
   if (message.author.bot) return;
 
-  const { channel, guild, member, content } = message;
+  const { channel, member, content } = message;
 
-  // Only staff
+  // Only staff can auto-claim
   if (!member.roles.cache.has(STAFF_ROLE_ID)) return;
 
   // Only unclaimed tickets
@@ -118,7 +118,7 @@ client.on(Events.MessageCreate, async (message) => {
 client.on(Events.InteractionCreate, async (interaction) => {
   if (!interaction.isButton()) return;
 
-  const { customId, channel, guild, user } = interaction;
+  const { customId, channel, user } = interaction;
   const claimerId = channel.topic;
 
   if (customId === "close_ticket") {
