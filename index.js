@@ -59,6 +59,16 @@ const ARCHIVE_CATEGORY_ID = "1426986618618646688";
 const staffButtonMessages = new Map(); // key = channel.id, value = message
 
 // -----------------------------
+// Safe DM
+async function safeDM(user, message) {
+  try {
+    await user.send(message);
+  } catch {
+    console.log(`⚠️ Could not DM ${user.tag}`);
+  }
+}
+
+// -----------------------------
 // Ready
 client.once(Events.ClientReady, () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
@@ -122,29 +132,28 @@ client.on(Events.InteractionCreate, async (interaction) => {
   // -----------------------------
   // CLAIM TICKET
   if (customId === "claim_ticket") {
-    const currentClaimer = channel.topic;
+    await interaction.deferUpdate();
 
-    if (currentClaimer && currentClaimer !== user.id) {
-      return interaction.reply({
-        content: `❌ This ticket is already claimed by <@${currentClaimer}>.`,
+    if (claimerId && claimerId !== user.id) {
+      return interaction.followUp({
+        content: `❌ This ticket is already claimed by <@${claimerId}>.`,
         ephemeral: true,
       });
     }
 
-    // Set topic to this staff
-    await channel.setTopic(user.id);
-
-    // Rename channel
+    // Update channel instantly
     const match = channel.name.match(/\d+$/);
-    const ticketNumber = match ? match[0] : ticketCounter - 1;
+    const ticketNumber = match ? match[0] : ticketCounter;
     await channel.setName(`✅-claimed-ticket-${ticketNumber}`);
+    await channel.setTopic(user.id);
+    claimerId = user.id;
 
-    // Delete old buttons message if exists
+    // Delete old message asynchronously
     const oldMsg = staffButtonMessages.get(channel.id);
     if (oldMsg) oldMsg.delete().catch(() => null);
     staffButtonMessages.delete(channel.id);
 
-    // Send claimed message with new buttons
+    // Immediately send new claimed message
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId("close_ticket")
@@ -156,28 +165,34 @@ client.on(Events.InteractionCreate, async (interaction) => {
         .setStyle(ButtonStyle.Danger)
     );
 
-    await channel.send({
+    const newMsg = await channel.send({
       content: `✅ Ticket claimed by <@${user.id}>`,
       components: [row],
     });
+    staffButtonMessages.set(channel.id, newMsg);
 
-    // Send ephemeral confirmation so button reacts immediately
-    await interaction.reply({ content: "✅ You claimed this ticket.", ephemeral: true });
+    // DM the ticket user if exists
+    const ticketUser = claimerId ? await guild.members.fetch(claimerId).catch(() => null) : null;
+    if (ticketUser) await safeDM(ticketUser.user, `💬 Your ticket has been claimed by <@${user.id}>.`);
   }
 
   // -----------------------------
   // REQUEST HELP
   if (customId === "request_help") {
+    await interaction.deferUpdate();
+
     if (claimerId && claimerId !== user.id) {
-      return interaction.reply({
+      return interaction.followUp({
         content: `❌ Only the staff who claimed this ticket (<@${claimerId}>) can request help.`,
         ephemeral: true,
       });
     }
 
+    // Set channel topic to null instantly
     await channel.setTopic(null);
+    claimerId = null;
 
-    // Delete old message
+    // Delete old message asynchronously
     const oldMsg = staffButtonMessages.get(channel.id);
     if (oldMsg) oldMsg.delete().catch(() => null);
     staffButtonMessages.delete(channel.id);
@@ -187,27 +202,27 @@ client.on(Events.InteractionCreate, async (interaction) => {
     const ticketNumber = match ? match[0] : ticketCounter - 1;
     await channel.setName(`❌-unclaimed-ticket-${ticketNumber}`);
 
-    // Send new unclaimed message
+    // Immediately send new unclaimed message
     const msg = await channel.send({
       content: `🆘 <@${user.id}> requested help. Ticket is now unclaimed. First <@&${STAFF_ROLE_ID}> to click Claim will take it.`,
       components: [createStaffButtons()],
     });
     staffButtonMessages.set(channel.id, msg);
-
-    await interaction.reply({ content: "🆘 Help requested. Ticket is now unclaimed.", ephemeral: true });
   }
 
   // -----------------------------
   // CLOSE TICKET
   if (customId === "close_ticket") {
+    await interaction.deferUpdate();
+
     if (claimerId && claimerId !== user.id) {
-      return interaction.reply({
+      return interaction.followUp({
         content: `❌ Only the staff who claimed this ticket (<@${claimerId}>) can close it.`,
         ephemeral: true,
       });
     }
 
-    // Delete old message
+    // Delete old message asynchronously
     const oldMsg = staffButtonMessages.get(channel.id);
     if (oldMsg) oldMsg.delete().catch(() => null);
     staffButtonMessages.delete(channel.id);
@@ -220,7 +235,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
       { id: STAFF_ROLE_ID, allow: ['ViewChannel', 'SendMessages', 'ManageChannels'] },
     ]);
 
-    await interaction.reply({ content: "🔒 Ticket closed.", ephemeral: true });
+    const ticketUser = claimerId ? await guild.members.fetch(claimerId).catch(() => null) : null;
+    if (ticketUser) await safeDM(ticketUser.user, "💬 Your ticket has been closed. Thank you for your patience!");
   }
 });
 
