@@ -51,7 +51,6 @@ function saveCounter() {
 // -----------------------------
 // Config from .env
 const STAFF_ROLE_ID = process.env.STAFF_ROLE_ID;
-const ARCHIVE_CATEGORY_ID = process.env.ARCHIVE_CATEGORY_ID;
 
 // -----------------------------
 // Single staff message tracker
@@ -119,6 +118,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
   // -----------------------------
   // CLAIM TICKET
   if (customId === "claim_ticket") {
+    if (claimerId && claimerId !== user.id) {
+      return interaction.reply({
+        content: `❌ This ticket is already claimed by <@${claimerId}>.`,
+        ephemeral: true,
+      });
+    }
+
     const match = channel.name.match(/\d+$/);
     const ticketNumber = match ? match[0] : ticketCounter;
 
@@ -126,7 +132,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
     await channel.setTopic(user.id);
     claimerId = user.id;
 
-    const newMsg = await channel.send({
+    // Update interaction instantly
+    await interaction.update({
       content: `✅ Ticket claimed by <@${user.id}>`,
       components: [
         new ActionRowBuilder().addComponents(
@@ -142,9 +149,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
       ],
     });
 
+    // Delete old staff message if exists
     const oldMsg = staffButtonMessages.get(channel.id);
     if (oldMsg) oldMsg.delete().catch(() => null);
-    staffButtonMessages.set(channel.id, newMsg);
+    staffButtonMessages.set(channel.id, interaction.message);
   }
 
   // -----------------------------
@@ -164,14 +172,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
     const ticketNumber = match ? match[0] : ticketCounter - 1;
     await channel.setName(`❌-unclaimed-ticket-${ticketNumber}`);
 
-    const newMsg = await channel.send({
+    await interaction.update({
       content: `🆘 <@${user.id}> requested help. Ticket is now unclaimed. First <@&${STAFF_ROLE_ID}> to click Claim will take it.`,
       components: [createStaffButtons()],
     });
 
     const oldMsg = staffButtonMessages.get(channel.id);
     if (oldMsg) oldMsg.delete().catch(() => null);
-    staffButtonMessages.set(channel.id, newMsg);
+    staffButtonMessages.set(channel.id, interaction.message);
   }
 
   // -----------------------------
@@ -183,6 +191,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
         ephemeral: true,
       });
     }
+
+    await interaction.deferUpdate();
 
     const oldMsg = staffButtonMessages.get(channel.id);
     if (oldMsg) oldMsg.delete().catch(() => null);
