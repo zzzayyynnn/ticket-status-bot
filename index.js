@@ -2,14 +2,10 @@ require("dotenv").config();
 const fs = require("fs");
 const path = require("path");
 const express = require("express");
-const {
-  Client,
-  GatewayIntentBits,
-  Events,
-} = require("discord.js");
+const { Client, GatewayIntentBits, Events } = require("discord.js");
 
 // -----------------------------
-// Express server (ping)
+// Express server
 const app = express();
 app.get("/", (req, res) => res.send("ok"));
 const PORT = process.env.PORT || 3000;
@@ -48,7 +44,6 @@ function saveCounter() {
 // -----------------------------
 // Config from .env
 const STAFF_ROLE_ID = process.env.STAFF_ROLE_ID;
-
 const GUILD_APP_CATEGORY = process.env.GUILD_APP_CATEGORY;
 const MASTER_TICKET_CATEGORY = process.env.MASTER_TICKET_CATEGORY;
 const APPLICATION_TICKET_CATEGORY = process.env.APPLICATION_TICKET_CATEGORY;
@@ -58,27 +53,6 @@ const MASTER_APPLICATION_CATEGORY = process.env.MASTER_APPLICATION_CATEGORY;
 // Ready
 client.once(Events.ClientReady, () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
-});
-
-// -----------------------------
-// Handle new ticket creation
-client.on(Events.ChannelCreate, async (channel) => {
-  try {
-    if (!channel.guild) return;
-
-    // Only in ticket categories
-    if (![GUILD_APP_CATEGORY, MASTER_TICKET_CATEGORY, APPLICATION_TICKET_CATEGORY, MASTER_APPLICATION_CATEGORY].includes(channel.parentId)) return;
-
-    // Rename new ticket to unclaimed
-    const ticketNumber = ticketCounter++;
-    await channel.setName(`❌-unclaimed-ticket-${ticketNumber}`);
-    await channel.setTopic(null);
-    saveCounter();
-
-    // ✅ No "Ticket created..." message is sent
-  } catch (err) {
-    console.error("ChannelCreate error:", err);
-  }
 });
 
 // -----------------------------
@@ -114,6 +88,27 @@ client.on(Events.MessageCreate, async (message) => {
     await channel.setName(`✅-claimed-ticket-${ticketNumber}`);
     await channel.setTopic(member.id);
     await channel.send(`✅ Ticket automatically claimed by <@${member.id}>`);
+  }
+});
+
+// -----------------------------
+// Handle new ticket creation (no messages, just rename)
+client.on(Events.ChannelCreate, async (channel) => {
+  try {
+    if (!channel.guild) return;
+
+    // Only in ticket categories
+    if (![GUILD_APP_CATEGORY, MASTER_TICKET_CATEGORY, APPLICATION_TICKET_CATEGORY, MASTER_APPLICATION_CATEGORY].includes(channel.parentId)) return;
+
+    // Rename new ticket to unclaimed automatically
+    const ticketNumber = ticketCounter++;
+    await channel.setName(`❌-unclaimed-ticket-${ticketNumber}`);
+    await channel.setTopic(null);
+    saveCounter();
+
+    // ✅ NO message is sent here
+  } catch (err) {
+    console.error("ChannelCreate error:", err);
   }
 });
 
