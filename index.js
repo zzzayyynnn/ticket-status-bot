@@ -126,7 +126,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
     await channel.setTopic(user.id);
     claimerId = user.id;
 
-    // Send new claimed message immediately
     const newMsg = await channel.send({
       content: `✅ Ticket claimed by <@${user.id}>`,
       components: [
@@ -143,7 +142,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
       ],
     });
 
-    // Delete old staff message asynchronously
     const oldMsg = staffButtonMessages.get(channel.id);
     if (oldMsg) oldMsg.delete().catch(() => null);
     staffButtonMessages.set(channel.id, newMsg);
@@ -177,7 +175,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
 
   // -----------------------------
-  // CLOSE TICKET
+  // CLOSE TICKET with 5-second delete
   if (customId === "close_ticket") {
     if (claimerId && claimerId !== user.id) {
       return interaction.reply({
@@ -190,13 +188,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
     if (oldMsg) oldMsg.delete().catch(() => null);
     staffButtonMessages.delete(channel.id);
 
-    await channel.send("🔒 Ticket closed and moved to archive.");
-    await channel.setParent(ARCHIVE_CATEGORY_ID);
+    const msg = await channel.send("🔒 Ticket will be deleted in 5 seconds...");
 
-    await channel.permissionOverwrites.set([
-      { id: channel.guild.roles.everyone.id, deny: ['ViewChannel'] },
-      { id: STAFF_ROLE_ID, allow: ['ViewChannel', 'SendMessages', 'ManageChannels'] },
-    ]);
+    for (let i = 4; i > 0; i--) {
+      await new Promise(res => setTimeout(res, 1000));
+      await msg.edit(`🔒 Ticket will be deleted in ${i} seconds...`);
+    }
+
+    await channel.delete().catch(() => null);
   }
 });
 
