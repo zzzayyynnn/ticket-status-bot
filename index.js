@@ -122,31 +122,29 @@ client.on(Events.InteractionCreate, async (interaction) => {
   // -----------------------------
   // CLAIM TICKET
   if (customId === "claim_ticket") {
-    await interaction.deferUpdate();
+    const currentClaimer = channel.topic;
 
-    // Already claimed by someone else
-    if (claimerId && claimerId !== user.id) {
-      return interaction.followUp({
-        content: `❌ This ticket is already claimed by <@${claimerId}>.`,
+    if (currentClaimer && currentClaimer !== user.id) {
+      return interaction.reply({
+        content: `❌ This ticket is already claimed by <@${currentClaimer}>.`,
         ephemeral: true,
       });
     }
 
-    // Set channel topic to this staff's ID
+    // Set topic to this staff
     await channel.setTopic(user.id);
-    claimerId = user.id;
 
-    // Rename channel to claimed
+    // Rename channel
     const match = channel.name.match(/\d+$/);
     const ticketNumber = match ? match[0] : ticketCounter - 1;
     await channel.setName(`✅-claimed-ticket-${ticketNumber}`);
 
-    // Delete old staff buttons message if exists
+    // Delete old buttons message if exists
     const oldMsg = staffButtonMessages.get(channel.id);
     if (oldMsg) oldMsg.delete().catch(() => null);
     staffButtonMessages.delete(channel.id);
 
-    // Immediately send new claimed message
+    // Send claimed message with new buttons
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId("close_ticket")
@@ -162,25 +160,24 @@ client.on(Events.InteractionCreate, async (interaction) => {
       content: `✅ Ticket claimed by <@${user.id}>`,
       components: [row],
     });
+
+    // Send ephemeral confirmation so button reacts immediately
+    await interaction.reply({ content: "✅ You claimed this ticket.", ephemeral: true });
   }
 
   // -----------------------------
   // REQUEST HELP
   if (customId === "request_help") {
-    await interaction.deferUpdate();
-
     if (claimerId && claimerId !== user.id) {
-      return interaction.followUp({
+      return interaction.reply({
         content: `❌ Only the staff who claimed this ticket (<@${claimerId}>) can request help.`,
         ephemeral: true,
       });
     }
 
-    // Set channel topic to null instantly
     await channel.setTopic(null);
-    claimerId = null;
 
-    // Delete old message asynchronously
+    // Delete old message
     const oldMsg = staffButtonMessages.get(channel.id);
     if (oldMsg) oldMsg.delete().catch(() => null);
     staffButtonMessages.delete(channel.id);
@@ -190,27 +187,27 @@ client.on(Events.InteractionCreate, async (interaction) => {
     const ticketNumber = match ? match[0] : ticketCounter - 1;
     await channel.setName(`❌-unclaimed-ticket-${ticketNumber}`);
 
-    // Immediately send new unclaimed message
+    // Send new unclaimed message
     const msg = await channel.send({
       content: `🆘 <@${user.id}> requested help. Ticket is now unclaimed. First <@&${STAFF_ROLE_ID}> to click Claim will take it.`,
       components: [createStaffButtons()],
     });
     staffButtonMessages.set(channel.id, msg);
+
+    await interaction.reply({ content: "🆘 Help requested. Ticket is now unclaimed.", ephemeral: true });
   }
 
   // -----------------------------
   // CLOSE TICKET
   if (customId === "close_ticket") {
-    await interaction.deferUpdate();
-
     if (claimerId && claimerId !== user.id) {
-      return interaction.followUp({
+      return interaction.reply({
         content: `❌ Only the staff who claimed this ticket (<@${claimerId}>) can close it.`,
         ephemeral: true,
       });
     }
 
-    // Delete old message asynchronously
+    // Delete old message
     const oldMsg = staffButtonMessages.get(channel.id);
     if (oldMsg) oldMsg.delete().catch(() => null);
     staffButtonMessages.delete(channel.id);
@@ -222,6 +219,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
       { id: channel.guild.roles.everyone.id, deny: ['ViewChannel'] },
       { id: STAFF_ROLE_ID, allow: ['ViewChannel', 'SendMessages', 'ManageChannels'] },
     ]);
+
+    await interaction.reply({ content: "🔒 Ticket closed.", ephemeral: true });
   }
 });
 
