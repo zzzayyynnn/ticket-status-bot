@@ -52,9 +52,6 @@ function saveCounter() {
 // Config from .env
 const STAFF_ROLE_ID = process.env.STAFF_ROLE_ID;
 const ARCHIVE_CATEGORY_ID = process.env.ARCHIVE_CATEGORY_ID;
-const MASTER_TICKET_CATEGORY = process.env.MASTER_TICKET_CATEGORY;
-const APPLICATION_TICKET_CATEGORY = process.env.APPLICATION_TICKET_CATEGORY;
-const MASTER_APPLICATION_CATEGORY = process.env.MASTER_APPLICATION_CATEGORY;
 
 // -----------------------------
 // Single staff message tracker
@@ -91,11 +88,10 @@ client.on(Events.ChannelCreate, async (channel) => {
     const ticketNumber = match ? match[0] : ticketCounter;
 
     await channel.setName(`❌-unclaimed-ticket-${ticketNumber}`);
-    await channel.setTopic(null); // no claimer yet
+    await channel.setTopic(null);
     ticketCounter++;
     saveCounter();
 
-    // Send single message immediately
     const msg = await channel.send({
       content: `🎟️ **Staff Controls** — Only staff can interact with these buttons.`,
       components: [createStaffButtons()],
@@ -123,52 +119,41 @@ client.on(Events.InteractionCreate, async (interaction) => {
   // -----------------------------
   // CLAIM TICKET
   if (customId === "claim_ticket") {
-    await interaction.deferUpdate();
-
-    if (claimerId && claimerId !== user.id) {
-      return interaction.followUp({
-        content: `❌ This ticket is already claimed by <@${claimerId}>.`,
-        ephemeral: true,
-      });
-    }
-
     const match = channel.name.match(/\d+$/);
     const ticketNumber = match ? match[0] : ticketCounter;
+
     await channel.setName(`✅-claimed-ticket-${ticketNumber}`);
     await channel.setTopic(user.id);
     claimerId = user.id;
 
-    // Delete old staff message
-    const oldMsg = staffButtonMessages.get(channel.id);
-    if (oldMsg) oldMsg.delete().catch(() => null);
-    staffButtonMessages.delete(channel.id);
-
-    // Send claimed message
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId("close_ticket")
-        .setLabel("❌ Close Ticket")
-        .setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder()
-        .setCustomId("request_help")
-        .setLabel("🆘 Request Help")
-        .setStyle(ButtonStyle.Danger)
-    );
-
+    // Send new claimed message immediately
     const newMsg = await channel.send({
       content: `✅ Ticket claimed by <@${user.id}>`,
-      components: [row],
+      components: [
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId("close_ticket")
+            .setLabel("❌ Close Ticket")
+            .setStyle(ButtonStyle.Secondary),
+          new ButtonBuilder()
+            .setCustomId("request_help")
+            .setLabel("🆘 Request Help")
+            .setStyle(ButtonStyle.Danger)
+        ),
+      ],
     });
+
+    // Delete old staff message asynchronously
+    const oldMsg = staffButtonMessages.get(channel.id);
+    if (oldMsg) oldMsg.delete().catch(() => null);
     staffButtonMessages.set(channel.id, newMsg);
   }
 
   // -----------------------------
   // REQUEST HELP
   if (customId === "request_help") {
-    await interaction.deferUpdate();
-
     if (claimerId && claimerId !== user.id) {
-      return interaction.followUp({
+      return interaction.reply({
         content: `❌ Only the staff who claimed this ticket (<@${claimerId}>) can request help.`,
         ephemeral: true,
       });
@@ -177,28 +162,25 @@ client.on(Events.InteractionCreate, async (interaction) => {
     await channel.setTopic(null);
     claimerId = null;
 
-    const oldMsg = staffButtonMessages.get(channel.id);
-    if (oldMsg) oldMsg.delete().catch(() => null);
-    staffButtonMessages.delete(channel.id);
-
     const match = channel.name.match(/\d+$/);
     const ticketNumber = match ? match[0] : ticketCounter - 1;
     await channel.setName(`❌-unclaimed-ticket-${ticketNumber}`);
 
-    const msg = await channel.send({
+    const newMsg = await channel.send({
       content: `🆘 <@${user.id}> requested help. Ticket is now unclaimed. First <@&${STAFF_ROLE_ID}> to click Claim will take it.`,
       components: [createStaffButtons()],
     });
-    staffButtonMessages.set(channel.id, msg);
+
+    const oldMsg = staffButtonMessages.get(channel.id);
+    if (oldMsg) oldMsg.delete().catch(() => null);
+    staffButtonMessages.set(channel.id, newMsg);
   }
 
   // -----------------------------
   // CLOSE TICKET
   if (customId === "close_ticket") {
-    await interaction.deferUpdate();
-
     if (claimerId && claimerId !== user.id) {
-      return interaction.followUp({
+      return interaction.reply({
         content: `❌ Only the staff who claimed this ticket (<@${claimerId}>) can close it.`,
         ephemeral: true,
       });
