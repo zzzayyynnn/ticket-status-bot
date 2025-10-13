@@ -59,16 +59,6 @@ const ARCHIVE_CATEGORY_ID = "1426986618618646688";
 const staffButtonMessages = new Map(); // key = channel.id, value = message
 
 // -----------------------------
-// Safe DM
-async function safeDM(user, message) {
-  try {
-    await user.send(message);
-  } catch {
-    console.log(`⚠️ Could not DM ${user.tag}`);
-  }
-}
-
-// -----------------------------
 // Ready
 client.once(Events.ClientReady, () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
@@ -165,15 +155,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
         .setStyle(ButtonStyle.Danger)
     );
 
-    const newMsg = await channel.send({
+    await channel.send({
       content: `✅ Ticket claimed by <@${user.id}>`,
       components: [row],
     });
-    staffButtonMessages.set(channel.id, newMsg);
-
-    // DM the ticket user if exists
-    const ticketUser = claimerId ? await guild.members.fetch(claimerId).catch(() => null) : null;
-    if (ticketUser) await safeDM(ticketUser.user, `💬 Your ticket has been claimed by <@${user.id}>.`);
   }
 
   // -----------------------------
@@ -234,9 +219,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
       { id: channel.guild.roles.everyone.id, deny: ['ViewChannel'] },
       { id: STAFF_ROLE_ID, allow: ['ViewChannel', 'SendMessages', 'ManageChannels'] },
     ]);
-
-    const ticketUser = claimerId ? await guild.members.fetch(claimerId).catch(() => null) : null;
-    if (ticketUser) await safeDM(ticketUser.user, "💬 Your ticket has been closed. Thank you for your patience!");
   }
 });
 
