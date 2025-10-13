@@ -6,9 +6,6 @@ const {
   Client,
   GatewayIntentBits,
   Events,
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
 } = require("discord.js");
 
 // -----------------------------
@@ -52,11 +49,10 @@ function saveCounter() {
 // Config from .env
 const STAFF_ROLE_ID = process.env.STAFF_ROLE_ID;
 
-// Categories
-const GUILD_APP_CATEGORY = "1398363565571969085";
-const MASTER_TICKET_CATEGORY = "1399235813379670028";
-const APPLICATION_TICKET_CATEGORY = "1403050594670743582";
-const MASTER_APPLICATION_CATEGORY = "1407414268965552270";
+const GUILD_APP_CATEGORY = process.env.GUILD_APP_CATEGORY;
+const MASTER_TICKET_CATEGORY = process.env.MASTER_TICKET_CATEGORY;
+const APPLICATION_TICKET_CATEGORY = process.env.APPLICATION_TICKET_CATEGORY;
+const MASTER_APPLICATION_CATEGORY = process.env.MASTER_APPLICATION_CATEGORY;
 
 // -----------------------------
 // Ready
@@ -65,15 +61,26 @@ client.once(Events.ClientReady, () => {
 });
 
 // -----------------------------
-// Close button
-function createCloseButton() {
-  return new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId("close_ticket")
-      .setLabel("❌ Close Ticket")
-      .setStyle(ButtonStyle.Secondary)
-  );
-}
+// Handle new ticket creation
+client.on(Events.ChannelCreate, async (channel) => {
+  try {
+    if (!channel.guild) return;
+
+    // Only in ticket categories
+    if (![GUILD_APP_CATEGORY, MASTER_TICKET_CATEGORY, APPLICATION_TICKET_CATEGORY, MASTER_APPLICATION_CATEGORY].includes(channel.parentId)) return;
+
+    // Rename new ticket to unclaimed
+    const ticketNumber = ticketCounter++;
+    await channel.setName(`❌-unclaimed-ticket-${ticketNumber}`);
+    await channel.setTopic(null);
+    saveCounter();
+
+    // Post notification
+    await channel.send(`🎟️ Ticket created. Staff can claim it by sending a link or "done".`);
+  } catch (err) {
+    console.error("ChannelCreate error:", err);
+  }
+});
 
 // -----------------------------
 // Auto-claim on message
@@ -82,7 +89,7 @@ client.on(Events.MessageCreate, async (message) => {
 
   const { channel, member, content } = message;
 
-  // Only staff can auto-claim
+  // Only staff
   if (!member.roles.cache.has(STAFF_ROLE_ID)) return;
 
   // Only unclaimed tickets
@@ -91,7 +98,6 @@ client.on(Events.MessageCreate, async (message) => {
   const ticketNumberMatch = channel.name.match(/\d+$/);
   const ticketNumber = ticketNumberMatch ? ticketNumberMatch[0] : ticketCounter;
 
-  // -----------------------------
   // Master / Guild Tickets (link)
   if ([GUILD_APP_CATEGORY, MASTER_TICKET_CATEGORY].includes(channel.parentId)) {
     const linkRegex = /(https?:\/\/[^\s]+)/g;
@@ -102,7 +108,6 @@ client.on(Events.MessageCreate, async (message) => {
     await channel.send(`✅ Ticket automatically claimed by <@${member.id}>`);
   }
 
-  // -----------------------------
   // Application / Master Application Tickets ("done")
   else if ([APPLICATION_TICKET_CATEGORY, MASTER_APPLICATION_CATEGORY].includes(channel.parentId)) {
     if (!content.toLowerCase().includes("done")) return;
@@ -110,31 +115,6 @@ client.on(Events.MessageCreate, async (message) => {
     await channel.setName(`✅-claimed-ticket-${ticketNumber}`);
     await channel.setTopic(member.id);
     await channel.send(`✅ Ticket automatically claimed by <@${member.id}>`);
-  }
-});
-
-// -----------------------------
-// Close button interaction
-client.on(Events.InteractionCreate, async (interaction) => {
-  if (!interaction.isButton()) return;
-
-  const { customId, channel, user } = interaction;
-  const claimerId = channel.topic;
-
-  if (customId === "close_ticket") {
-    if (claimerId && claimerId !== user.id) {
-      return interaction.reply({ content: `❌ Only the staff who claimed this ticket (<@${claimerId}>) can close it.`, ephemeral: true });
-    }
-
-    await interaction.deferUpdate();
-
-    const msg = await channel.send("🔒 Ticket will be deleted in 5 seconds...");
-    for (let i = 4; i > 0; i--) {
-      await new Promise(res => setTimeout(res, 1000));
-      await msg.edit(`🔒 Ticket will be deleted in ${i} seconds...`);
-    }
-
-    await channel.delete().catch(() => null);
   }
 });
 
