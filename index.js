@@ -9,11 +9,10 @@ const {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
-  PermissionFlagsBits,
 } = require("discord.js");
 
 // -----------------------------
-// Express server
+// Express server (ping)
 const app = express();
 app.get("/", (req, res) => res.send("ok"));
 const PORT = process.env.PORT || 3000;
@@ -50,13 +49,16 @@ function saveCounter() {
 }
 
 // -----------------------------
-// Config
-const STAFF_ROLE_ID = "1421545043214340166";
-const ARCHIVE_CATEGORY_ID = "1426986618618646688";
+// Config from .env
+const STAFF_ROLE_ID = process.env.STAFF_ROLE_ID;
+const ARCHIVE_CATEGORY_ID = process.env.ARCHIVE_CATEGORY_ID;
+const MASTER_TICKET_CATEGORY = process.env.MASTER_TICKET_CATEGORY;
+const APPLICATION_TICKET_CATEGORY = process.env.APPLICATION_TICKET_CATEGORY;
+const MASTER_APPLICATION_CATEGORY = process.env.MASTER_APPLICATION_CATEGORY;
 
 // -----------------------------
-// Store single staff message per channel
-const staffButtonMessages = new Map(); // key = channel.id, value = message
+// Single staff message tracker
+const staffButtonMessages = new Map(); // channel.id => message
 
 // -----------------------------
 // Ready
@@ -112,7 +114,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
   const { customId, user, channel, guild } = interaction;
   const member = await guild.members.fetch(user.id);
 
-  // Only staff can interact
   if (!member.roles.cache.has(STAFF_ROLE_ID)) {
     return interaction.reply({ content: "❌ Only staff can use this.", ephemeral: true });
   }
@@ -131,19 +132,18 @@ client.on(Events.InteractionCreate, async (interaction) => {
       });
     }
 
-    // Update channel instantly
     const match = channel.name.match(/\d+$/);
     const ticketNumber = match ? match[0] : ticketCounter;
     await channel.setName(`✅-claimed-ticket-${ticketNumber}`);
     await channel.setTopic(user.id);
     claimerId = user.id;
 
-    // Delete old message asynchronously
+    // Delete old staff message
     const oldMsg = staffButtonMessages.get(channel.id);
     if (oldMsg) oldMsg.delete().catch(() => null);
     staffButtonMessages.delete(channel.id);
 
-    // Immediately send new claimed message
+    // Send claimed message
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId("close_ticket")
@@ -155,10 +155,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
         .setStyle(ButtonStyle.Danger)
     );
 
-    await channel.send({
+    const newMsg = await channel.send({
       content: `✅ Ticket claimed by <@${user.id}>`,
       components: [row],
     });
+    staffButtonMessages.set(channel.id, newMsg);
   }
 
   // -----------------------------
@@ -173,21 +174,17 @@ client.on(Events.InteractionCreate, async (interaction) => {
       });
     }
 
-    // Set channel topic to null instantly
     await channel.setTopic(null);
     claimerId = null;
 
-    // Delete old message asynchronously
     const oldMsg = staffButtonMessages.get(channel.id);
     if (oldMsg) oldMsg.delete().catch(() => null);
     staffButtonMessages.delete(channel.id);
 
-    // Rename channel to unclaimed
     const match = channel.name.match(/\d+$/);
     const ticketNumber = match ? match[0] : ticketCounter - 1;
     await channel.setName(`❌-unclaimed-ticket-${ticketNumber}`);
 
-    // Immediately send new unclaimed message
     const msg = await channel.send({
       content: `🆘 <@${user.id}> requested help. Ticket is now unclaimed. First <@&${STAFF_ROLE_ID}> to click Claim will take it.`,
       components: [createStaffButtons()],
@@ -207,7 +204,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
       });
     }
 
-    // Delete old message asynchronously
     const oldMsg = staffButtonMessages.get(channel.id);
     if (oldMsg) oldMsg.delete().catch(() => null);
     staffButtonMessages.delete(channel.id);
