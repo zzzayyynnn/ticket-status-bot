@@ -75,8 +75,7 @@ client.on(Events.ChannelCreate, async (channel) => {
     await channel.setTopic(null);
     saveCounter();
 
-    // Post notification
-    await channel.send(`🎟️ Ticket created. Staff can claim it by sending a link or "done".`);
+    // ✅ No "Ticket created..." message is sent
   } catch (err) {
     console.error("ChannelCreate error:", err);
   }
